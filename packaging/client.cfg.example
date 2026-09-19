@@ -1,0 +1,90 @@
+# pushmails-client configuration
+#
+# Copy to the path your build looks at:
+#   Linux    /etc/pushmails/client.cfg
+#   Windows  %ProgramData%\PushMails\client.cfg
+#
+# The file holds an agent token, so restrict it:
+#   chmod 600 /etc/pushmails/client.cfg
+#
+# Every key here has a matching flag and environment variable, and a flag or an
+# environment variable wins over this file.
+#
+# To read the file from somewhere else, set PUSHMAILS_CONFIG=/path/to/client.cfg
+# or pass -config; the flag wins.
+
+# --- central system (required) ---
+PUSHMAILS_API=https://api.pushmails.net
+PUSHMAILS_TOKEN=
+
+# --- how mail leaves this machine ---
+#
+#   direct  this process talks to the recipient's mail server itself. Nothing
+#           else is involved, and "sent" means their server accepted the
+#           message. Needs outbound port 25 and a reverse DNS name.
+#   relay   hand every message to one SMTP server you nominate and let it
+#           deliver. Then "sent" only means the relay took it, and whatever
+#           happens afterwards arrives as a bounce in the From mailbox.
+#
+#PUSHMAILS_MODE=direct
+
+# --- direct mode ---
+#
+# Name given in EHLO. Receiving servers compare it with the reverse DNS (PTR)
+# of the address you connect from, and a mismatch costs reputation on every
+# message. Defaults to this machine's hostname, which is often not qualified.
+#EHLO_NAME=mail.example.com
+# Address outgoing connections bind to. Leave empty on a machine with one
+# address. Set it when there are several and only one carries the PTR and is
+# named in your SPF record.
+#SOURCE_IP=
+# Budget for one delivery, DNS lookup included.
+#DIRECT_TIMEOUT=60s
+
+# --- relay mode ---
+#
+# Only read when PUSHMAILS_MODE=relay. The relay is what actually delivers, so
+# this is the way out, not a test target: localhost suits the usual setup where
+# Postfix or Exim runs on the same machine.
+#
+# Whether outbound port 25 works from this host is checked separately in both
+# modes, and there is no key for it here: the central system supplies the
+# address to dial and reads the result. Many providers filter port 25 on home
+# and cheap VPS connections, and the check tells you that before a campaign
+# does.
+#SMTP_HOST=localhost
+#SMTP_PORT=25
+#SMTP_USERNAME=
+#SMTP_PASSWORD=
+#SMTP_TLS=false
+# Skip TLS certificate verification. Local testing only.
+#SMTP_SKIP_VERIFY=false
+#SMTP_TIMEOUT=30s
+
+# --- bounce handling (required) ---
+#
+# Domain the envelope sender is built on: bounce+<message id>@<this domain>.
+# A rejection that arrives after the receiving server accepted the message
+# carries nothing else that identifies it, so without this there is no way to
+# clean the list and the dead addresses stay on it.
+#
+# Use the `bounce` subdomain of the domain you send from; the panel lists the
+# MX record to add and verifies it like the others. It has to be yours: the
+# envelope domain is what receiving servers run SPF against, and the connection
+# comes from this machine.
+BOUNCE_DOMAIN=bounce.example.com
+
+# --- DKIM signing ---
+#
+# Nothing to configure. The signing keys come from the central system, one per
+# verified sending domain, and are held in memory only. A key generated here
+# would not match the public key the panel published in your DNS, so the
+# signature would fail verification at every receiver.
+
+# --- sending behaviour ---
+#CONCURRENCY=4
+#BATCH_SIZE=50
+#LOG_LEVEL=info
+# Exercise the protocol without sending email: jobs are claimed, messages are
+# built and signed, then handed back.
+#DRY_RUN=false

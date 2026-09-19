@@ -1,0 +1,85 @@
+# PushMails client — sends your campaigns through your own SMTP server.
+#
+# Install to /etc/systemd/system/pushmails-client.service
+# See packaging/systemd/README.md for the full setup.
+#
+# Settings come from /etc/pushmails/client.cfg, which the binary reads itself,
+# so no ExecStart arguments are needed and the same file works whether the
+# client is started by systemd or by hand. A flag or an environment variable
+# still wins over the file, so you can override one setting for a single run
+# without editing anything.
+
+[Unit]
+Description=PushMails client
+Documentation=https://github.com/appstonia/pushmails-client
+After=network-online.target
+Wants=network-online.target
+# If your SMTP server runs on this same machine, uncomment the matching line
+# so the client does not start polling before its relay is up. Not required:
+# the client retries with backoff and reports the failure through preflight.
+#After=postfix.service
+#After=exim4.service
+
+# A misconfiguration that fails at startup (missing token, unreachable relay)
+# should not restart in a tight loop: it floods the log and hides the cause.
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=pushmails
+Group=pushmails
+ExecStart=/usr/local/bin/pushmails-client
+
+Restart=always
+RestartSec=10
+# Room for in-flight SMTP sessions to finish. Nothing is lost if one is cut
+# short: a batch that is never acknowledged returns to the queue on the server
+# when its lease expires, so it goes out on the next run rather than vanishing.
+TimeoutStopSec=120
+KillSignal=SIGTERM
+
+# --- logging ---
+# Output goes to the journal (systemd's default) under this name, which is what
+# `journalctl -t pushmails-client` and any syslog rule match on.
+#
+# Do not set StandardOutput=syslog here: it was deprecated in systemd 246 and
+# is mapped to the journal anyway. To get these lines into syslog, turn on
+# forwarding once for the machine instead — see the README.
+SyslogIdentifier=pushmails-client
+
+# --- hardening ---
+# The client writes nothing to disk. It reads its config and DKIM key from
+# /etc/pushmails and everything else goes over the network.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+# AF_UNIX is needed for the journal socket, and for the relay too if you
+# connect to it over a Unix socket rather than TCP.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+# The client only makes outbound connections; it never binds a port.
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadOnlyPaths=/etc/pushmails
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+# build output
+/bin/
+/dist/
+/dev/
+# Anchored: unanchored, this also matched cmd/pushmails-client/ and kept the
+# program's entry point out of the repository entirely.
+/pushmails-client
+*.exe
+
+# configuration — only .example files are tracked
+client.cfg
+config.yml
+config.yaml
+.env
+.env.local
+*.pem
+*.key
+
+# operating system / editor
+.DS_Store
+.idea
+.vscode/
