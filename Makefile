@@ -1,4 +1,4 @@
-.PHONY: build test lint run clean install
+.PHONY: build test lint run clean install deb rpm packages
 
 # Release version. The source (cmd/pushmails-client/main.go) carries the
 # truth; this only refines it. On a tagged checkout the exact tag is stamped
@@ -61,3 +61,34 @@ release:
 	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS_WINDOWS)" -o dist/pushmails-client-windows-amd64.exe ./cmd/pushmails-client
 	GOOS=windows GOARCH=arm64 go build -ldflags "$(LDFLAGS_WINDOWS)" -o dist/pushmails-client-windows-arm64.exe ./cmd/pushmails-client
 	@echo "built into dist/"
+
+# --- Linux packages ---
+#
+#   make deb ARCH=arm64
+#   make packages              # .deb and .rpm for amd64 and arm64
+#
+# The binary is statically linked, so packages are packed from it rather than
+# built from source: dpkg-deb for .deb, rpmbuild for .rpm, and either
+# architecture from any Linux host. Output lands in dist/.
+ARCH ?= amd64
+
+# Package version: the tag when there is one, otherwise the release the source
+# declares. build.sh turns it into a form both package managers accept.
+PKG_VERSION ?= $(if $(strip $(VERSION)),$(VERSION),$(shell sed -n 's/^var version = "\(.*\)"/\1/p' cmd/pushmails-client/main.go))
+
+.PHONY: linux-binary
+linux-binary:
+	@mkdir -p dist
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -trimpath -ldflags "$(LDFLAGS)" -o dist/pushmails-client-linux-$(ARCH) ./cmd/pushmails-client
+
+deb: linux-binary
+	packaging/linux/build.sh deb $(ARCH) $(PKG_VERSION) dist/pushmails-client-linux-$(ARCH)
+
+rpm: linux-binary
+	packaging/linux/build.sh rpm $(ARCH) $(PKG_VERSION) dist/pushmails-client-linux-$(ARCH)
+
+packages:
+	$(MAKE) deb ARCH=amd64
+	$(MAKE) deb ARCH=arm64
+	$(MAKE) rpm ARCH=amd64
+	$(MAKE) rpm ARCH=arm64

@@ -234,6 +234,34 @@ receiving servers run SPF against, and the connection comes from your machine:
 a domain that does not authorise this machine turns a passing SPF into a
 failing one, and takes the aligned path to DMARC with it.
 
+## Installing from a package
+
+Debian/Ubuntu and RHEL/Fedora/Rocky/Alma packages install the binary to
+`/usr/bin`, the unit to `/usr/lib/systemd/system`, the example config to
+`/etc/pushmails/client.cfg` (mode 0640, group `pushmails`) and create the
+`pushmails` system user:
+
+```bash
+sudo apt install ./pushmails-client_1.0.0_amd64.deb      # Debian, Ubuntu
+sudo dnf install ./pushmails-client-1.0.0-1.x86_64.rpm   # RHEL, Fedora, Rocky, Alma
+
+sudo editor /etc/pushmails/client.cfg          # api address, token, bounce domain
+sudo systemctl enable --now pushmails-client
+```
+
+The service is not started on install: the shipped config has no token, so it
+could only fail. Upgrades keep your edited config (on RPM systems the new
+example lands next to it as `client.cfg.rpmnew`) and restart a running client.
+
+To build the packages yourself on a Linux machine with `dpkg-deb` or
+`rpmbuild`:
+
+```bash
+make deb ARCH=amd64        # dist/pushmails-client_<version>_amd64.deb
+make rpm ARCH=arm64        # dist/pushmails-client-<version>-1.aarch64.rpm
+make packages              # both formats, both architectures
+```
+
 ## Running under systemd
 
 A ready-to-use unit ships in `packaging/systemd/pushmails-client.service`,

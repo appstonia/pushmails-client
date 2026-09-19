@@ -7,6 +7,16 @@
 /pushmails-client
 *.exe
 
+/packaging/linux/
+# Linux packages — built into dist/ by `make deb` / `make rpm`, but a manual
+# dpkg-buildpackage or rpmbuild run can drop them elsewhere
+*.deb
+*.ddeb
+*.rpm
+*.changes
+*.buildinfo
+/rpmbuild/
+
 # configuration — only .example files are tracked
 client.cfg
 config.yml
