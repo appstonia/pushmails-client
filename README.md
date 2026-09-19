@@ -47,7 +47,15 @@ Get a token from the PushMails panel via **Sender servers → Add server**. The
 token is shown only once.
 
 ```bash
-pushmails-client --config /path/to/client.cfg
+pushmails-client \
+  --api https://api.pushmails.net \
+  --token pm_live_xxxxxxxxxxxx \
+  --ehlo mail.yourexample.com
+```
+Or with a config file:
+```bash
+pushmails-client \
+  --config /etc/pushmails/client.cfg
 ```
 
 Once running it connects to the central system and starts sending as soon as a
