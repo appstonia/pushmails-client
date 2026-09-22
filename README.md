@@ -337,20 +337,19 @@ running**. The config that ships with it has no token, so a service set to
 start by itself could only fail. Fill the file in first:
 
 ```powershell
-notepad "$env:ProgramData\PushMails\client.cfg"
+Start-Process notepad -ArgumentList "C:\ProgramData\PushMails\client.cfg" -Verb RunAs
 ```
 
 Then turn it on:
 
 ```powershell
-sc.exe config pushmails-client start= auto
-sc.exe start pushmails-client
+start sc.exe -ArgumentList "config pushmails-client start= auto" -Verb RunAs
+start sc.exe -ArgumentList "start pushmails-client" -Verb RunAs
 ```
 
 Upgrades keep your edited config and restart the service. Uninstalling removes
-the service and the program files but **leaves the config in place**, because
-it holds your token and your settings; delete `C:\ProgramData\PushMails`
-yourself when you are done with it.
+the service, the program files **and the config**, token included — keep a copy
+first if you mean to reinstall.
 
 ### From source
 
@@ -462,8 +461,8 @@ record, use `relay` mode and hand the mail to an SMTP server that has them.
 
 With the MSI, run the new one — it stops the service, replaces the binary,
 starts it again and leaves your config alone. To remove it, use **Apps &
-features** or `msiexec /x`, then delete `C:\ProgramData\PushMails` when you no
-longer need the token.
+features** or `msiexec /x`; that takes the config with it, so copy the file
+first if you will want the token again.
 
 With a build from source:
 
