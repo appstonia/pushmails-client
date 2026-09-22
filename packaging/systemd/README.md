@@ -72,6 +72,7 @@ lines.
 ## Other init systems
 
 The client is a plain long-running console program that logs to stdout and
-stops on SIGTERM, so any supervisor works — OpenRC, runit, s6, or a Windows
-service wrapper. The only requirements are that it can read
-`/etc/pushmails/client.cfg` and reach both your relay and the API.
+stops on SIGTERM, so any supervisor works — OpenRC, runit, s6. The only
+requirements are that it can read `/etc/pushmails/client.cfg` and reach both
+your relay and the API. On Windows it registers with the service manager
+itself; see "Running on Windows" in the main README.

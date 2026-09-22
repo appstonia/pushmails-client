@@ -11,7 +11,8 @@ it directly, with nothing else in the path. If you would rather keep an
 existing relay in the middle, it can do that too.
 
 - **Delivers by itself** — no Postfix, no Exim, no smarthost required
-- **Zero dependencies** — the Go standard library only
+- **Next to no dependencies** — the Go standard library, plus `golang.org/x/sys`
+  for the Windows service
 - **Single binary** — build it, copy it, run it
 - **One-way HTTP** — works behind NAT and a firewall, no inbound port needed
 - **No lost work** — if the process crashes, the central system takes the jobs back
@@ -260,7 +261,7 @@ failing one, and takes the aligned path to DMARC with it.
 
 ## Installing from a package
 
-Debian/Ubuntu and RHEL/Fedora/Rocky/Alma packages install the binary to
+The Debian/Ubuntu and RHEL/Fedora/Rocky/Alma packages install the binary to
 `/usr/bin`, the unit to `/usr/lib/systemd/system`, the example config to
 `/etc/pushmails/client.cfg` (mode 0640, group `pushmails`) and create the
 `pushmails` system user:
@@ -277,14 +278,11 @@ The service is not started on install: the shipped config has no token, so it
 could only fail. Upgrades keep your edited config (on RPM systems the new
 example lands next to it as `client.cfg.rpmnew`) and restart a running client.
 
-To build the packages yourself on a Linux machine with `dpkg-deb` or
-`rpmbuild`:
-
-```bash
-make deb ARCH=amd64        # dist/pushmails-client_<version>_amd64.deb
-make rpm ARCH=arm64        # dist/pushmails-client-<version>-1.aarch64.rpm
-make packages              # both formats, both architectures
-```
+Packages are published on the
+[releases page](https://github.com/appstonia/pushmails-client/releases) for
+`amd64` and `arm64`. If you would rather not use one, build from source and
+install the unit by hand — the next section covers that, and nothing about the
+client requires a package.
 
 ## Running under systemd
 
@@ -318,39 +316,164 @@ the logs to syslog, and running under init systems other than systemd.
 
 ## Running on Windows
 
-Put the binary and its config where the build expects them:
+On Windows the client runs as a real Windows service. There are two ways in:
+the MSI, which installs the binary and registers the service for you, or a
+build from source and `sc.exe`.
+
+### With the installer
+
+Download `pushmails-client-<version>-x64.msi` (or `-arm64.msi`) from the
+[releases page](https://github.com/appstonia/pushmails-client/releases) and
+run it, or install it unattended:
 
 ```powershell
-mkdir "C:\Program Files\PushMails"
-copy pushmails-client.exe "C:\Program Files\PushMails\"
-
-mkdir "%ProgramData%\PushMails"
-copy packaging\client.cfg.example "%ProgramData%\PushMails\client.cfg"
+msiexec /i pushmails-client-1.0.0-x64.msi /qn
 ```
 
-Edit `%ProgramData%\PushMails\client.cfg`, then check it runs in the
-foreground first:
+It puts the binary in `C:\Program Files\PushMails`, the config in
+`C:\ProgramData\PushMails\client.cfg` with the permissions it needs, and
+registers the `pushmails-client` service — **on manual start, and not
+running**. The config that ships with it has no token, so a service set to
+start by itself could only fail. Fill the file in first:
 
 ```powershell
-"C:\Program Files\PushMails\pushmails-client.exe" --dry-run --log-level debug
+notepad "$env:ProgramData\PushMails\client.cfg"
 ```
 
-To keep it running, register it as a service — the client is a plain
-long-running console program, so any service wrapper works:
+Then turn it on:
 
 ```powershell
-sc.exe create PushMailsClient ^
-  binPath= "C:\Program Files\PushMails\pushmails-client.exe" start= auto
-sc.exe start PushMailsClient
+sc.exe config pushmails-client start= auto
+sc.exe start pushmails-client
 ```
 
-The config file holds your token: restrict it to the account the service runs
-as and remove inherited permissions.
+Upgrades keep your edited config and restart the service. Uninstalling removes
+the service and the program files but **leaves the config in place**, because
+it holds your token and your settings; delete `C:\ProgramData\PushMails`
+yourself when you are done with it.
+
+### From source
 
 ```powershell
-icacls "%ProgramData%\PushMails\client.cfg" /inheritance:r ^
+git clone https://github.com/appstonia/pushmails-client.git
+cd pushmails-client
+go build -o pushmails-client.exe .\cmd\pushmails-client
+```
+
+Go cross-compiles, so the machine you build on does not have to match the one
+you run on. On Windows-on-ARM, `$env:GOARCH="amd64"; go build …` produces an
+x64 binary — which Windows 11 on ARM also runs under emulation, so `amd64` is
+the safe answer whenever you are unsure. Unset the variable afterwards
+(`Remove-Item Env:GOARCH`); it stays set for the rest of the session.
+
+Put the binary and its config where the service will look for them, from an
+elevated PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force "$env:ProgramFiles\PushMails" | Out-Null
+Copy-Item .\pushmails-client.exe "$env:ProgramFiles\PushMails\"
+
+New-Item -ItemType Directory -Force "$env:ProgramData\PushMails" | Out-Null
+Copy-Item .\packaging\client.cfg.example "$env:ProgramData\PushMails\client.cfg"
+notepad "$env:ProgramData\PushMails\client.cfg"
+```
+
+`%ProgramData%\PushMails\client.cfg` is the path the binary looks at by
+default, so no `--config` argument is needed once the file is there. Save it as
+UTF-8; a BOM is tolerated, a file saved as UTF-16 is not readable.
+
+The file holds your agent token and `%ProgramData%` is readable by every user
+by default, so drop the inherited permissions:
+
+```powershell
+icacls "$env:ProgramData\PushMails\client.cfg" /inheritance:r `
   /grant:r "SYSTEM:(R)" "Administrators:(F)"
 ```
+
+Check it in the foreground before registering anything:
+
+```powershell
+& "$env:ProgramFiles\PushMails\pushmails-client.exe" --dry-run --log-level debug
+```
+
+No mail is sent: the connection, the token and the job-claiming round trip are
+exercised, and claimed jobs go straight back to the queue. Within a few seconds
+a preflight line says whether sending is allowed and, if it is not, which check
+failed (see [Check codes](#check-codes)). Stop it with Ctrl+C.
+
+Then register the service:
+
+```powershell
+sc.exe create pushmails-client start= auto `
+  binPath= "\"$env:ProgramFiles\PushMails\pushmails-client.exe\"" `
+  DisplayName= "PushMails Client"
+sc.exe description pushmails-client "Sends PushMails campaigns from this server."
+sc.exe failure pushmails-client reset= 86400 actions= restart/60000/restart/60000/restart/60000
+sc.exe start pushmails-client
+```
+
+The binary detects that the service manager started it and reports its status
+accordingly; no wrapper such as WinSW or NSSM is needed. The same binary still
+runs in the foreground when you start it yourself.
+
+### Logs
+
+Started as a service, the client has no console, so it writes to
+`C:\ProgramData\PushMails\client.log` — the whole log, not just errors. Set
+`PUSHMAILS_LOG_FILE` to put it somewhere else. The file rolls over at 10 MB and
+one previous generation is kept as `client.log.1`.
+
+```powershell
+Get-Content "$env:ProgramData\PushMails\client.log" -Wait -Tail 20
+```
+
+Started from a console it writes to stdout as it does everywhere else.
+
+A stop is graceful: the client finishes the batch in hand, reports the results
+and returns anything it never started. Nothing is lost even if it is killed —
+a batch that is never acknowledged goes back into the queue on the central
+system when its lease expires.
+
+### Port 25 on a Windows host
+
+In the default `direct` mode the client connects to each recipient's mail
+server on port 25. Two things commonly stand in the way:
+
+- **The provider.** Azure, and most Windows VPS providers, block outbound 25 by
+  default. Nothing on the machine works around it — it is either lifted on
+  request or it is not. The client reports it as `port25_blocked`.
+- **Windows Firewall.** Outbound connections are allowed by default, so nothing
+  is needed unless that policy was changed. If it was:
+
+  ```powershell
+  New-NetFirewallRule -DisplayName "PushMails client (SMTP out)" `
+    -Direction Outbound -Protocol TCP -RemotePort 25 -Action Allow `
+    -Program "$env:ProgramFiles\PushMails\pushmails-client.exe"
+  ```
+
+No inbound rule is ever needed; the client only makes outbound connections.
+
+Direct mode also wants a PTR record for the address the machine sends from, and
+that address in the SPF record of every domain it sends for. Both show up as
+check codes when they are missing. If you can get neither port 25 nor a PTR
+record, use `relay` mode and hand the mail to an SMTP server that has them.
+
+### Upgrading and uninstalling
+
+With the MSI, run the new one — it stops the service, replaces the binary,
+starts it again and leaves your config alone. To remove it, use **Apps &
+features** or `msiexec /x`, then delete `C:\ProgramData\PushMails` when you no
+longer need the token.
+
+With a build from source:
+
+```powershell
+sc.exe stop pushmails-client
+Copy-Item .\pushmails-client.exe "$env:ProgramFiles\PushMails\" -Force
+sc.exe start pushmails-client
+```
+
+Removing that one is `sc.exe delete pushmails-client` plus the two folders.
 
 ## How it works
 

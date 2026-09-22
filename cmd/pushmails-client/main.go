@@ -15,6 +15,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -58,6 +59,26 @@ func run() error {
 		}
 	}
 
+	// Started by the Windows service manager rather than from a console: the
+	// SCM owns the lifecycle, so it builds the context instead of signals.
+	// Always false on every other platform.
+	if runningAsService() {
+		return runService()
+	}
+
+	// A shutdown signal cancels the context; the runner finishes the batch in
+	// hand, reports the results and then exits.
+	ctx, stop := signal.NotifyContext(context.Background(),
+		os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	return runClient(ctx)
+}
+
+// runClient is everything the process does once someone has decided how it
+// will be told to stop. The console path cancels ctx on a signal, the Windows
+// service path on a stop request from the service manager.
+func runClient(ctx context.Context) error {
 	cfg, err := config.Load(os.Args[1:])
 	if err != nil {
 		return err
@@ -96,12 +117,6 @@ func run() error {
 	if err != nil {
 		return err
 	}
-
-	// A shutdown signal cancels the context; the runner finishes the batch in
-	// hand, reports the results and then exits.
-	ctx, stop := signal.NotifyContext(context.Background(),
-		os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	// Initial long-poll estimate; `hello` replaces it with the real value.
 	client := agent.New(cfg.APIURL, cfg.Token, version, 25*time.Second)
@@ -160,6 +175,11 @@ There is NO WARRANTY, to the extent permitted by law.
 `, version)
 }
 
+// logOutput is where the log lines go. A console build writes to stdout; the
+// Windows service path replaces this with a file before anything is logged,
+// because a service has no console to write to.
+var logOutput io.Writer = os.Stdout
+
 func setupLogging(level string) {
 	var lvl slog.Level
 	switch level {
@@ -172,5 +192,5 @@ func setupLogging(level string) {
 	default:
 		lvl = slog.LevelInfo
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: lvl})))
+	slog.SetDefault(slog.New(slog.NewTextHandler(logOutput, &slog.HandlerOptions{Level: lvl})))
 }
