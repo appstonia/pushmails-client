@@ -7,7 +7,10 @@
 /pushmails-client
 *.exe
 
+# packaging tooling is ours, not the user's: the repository documents building
+# from source and wiring up the service by hand
 /packaging/linux/
+/packaging/windows/
 # Linux packages — built into dist/ by `make deb` / `make rpm`, but a manual
 # dpkg-buildpackage or rpmbuild run can drop them elsewhere
 *.deb
